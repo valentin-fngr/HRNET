@@ -5,8 +5,8 @@ warnings.filterwarnings("ignore")
 from pycocotools.coco import COCO
 import os 
 import numpy as np 
-
-
+import cv2
+import torch 
 
 
 
@@ -15,7 +15,7 @@ class COCODataset(Dataset):
 
 
 
-    def __init__(self): 
+    def __init__(self, transform=None): 
         super().__init__()
 
         # TODO : 
@@ -26,15 +26,21 @@ class COCODataset(Dataset):
         # either train2017 or val2017
         self.data_set = "val2017"
         # image width and height
-        self.image_width = 256 
-        self.image_height = 256
+        self.image_width = 640
+        self.image_height = 480
         self.aspect_ratio = self.image_width * 1.0 / self.image_height
+
+        self.heatmap_width = 64 
+        self.heatmap_height = 64 
+
+        # used for gaussian filtering 
+        self.sigma = 2
 
         # no idea what it does
         self.pixel_std = 200
         self.num_joints = 17
 
-
+        self.transform = transform
 
         self.coco = COCO(self._get_annotation_file())
         self.image_ids = self._get_img_ids()
@@ -76,6 +82,9 @@ class COCODataset(Dataset):
         return len(self.db)
 
     def _get_db(self): 
+        """
+            Load all instances based on data_set
+        """
         if self.is_train: 
             db = self._load_coco_keypoints()
 
@@ -83,8 +92,75 @@ class COCODataset(Dataset):
 
 
 
-    def _load_coco_keypoints(self): 
+    def _generate_heatmaps(self, keypoints): 
+        """
+            Generate #keypoints target heatmap using 2d gaussian filtering 
+
+            Args: 
+                keypoints : nd array of size (#keypoints, 2)
+            Output: 
+                heatmaps : nd array of size (#keypoints, heatmap_width, heatmap_height)
+        """
+
+        heatmaps = np.zeros((self.num_joints, self.image_height, self.image_width))
+
+        for i in range(self.num_joints): 
+            # generate heatmap for each keypoint 
+            mu_x, mu_y = keypoints[i]
+            tx = np.arange(0, self.image_width, 1, dtype=np.float32)
+            ty = np.arange(0, self.image_height, 1, dtype=np.float32)[:, None]
+            heatmaps[i] = np.exp(- ((tx - mu_x) ** 2 + (ty - mu_y) ** 2) / (2 * self.sigma ** 2))
+    
+        return heatmaps
+
+
+    def __getitem__(self, index):
+        """
+            Return a training sample
+
+            Args: 
+                index : item's index 
+
+            Output: 
+                image : 3D image array (H,W,3)
+                keypoints_heatmap : 2D gaussian heatmap for each keypoint (nb_keypoints, h, w)
+        """
         
+        item = self.db[index]
+        image_path = item["image_path"]
+        keypoints = item["joints_2d"]
+        keypoints_visibility = item["joints_2d_visibility"]
+        x, y, w, h = item["bbox"]
+
+        x2 = x + w 
+        y2 = y + h
+        
+        # load image 
+        image_array = cv2.imread(image_path, cv2.IMREAD_COLOR)
+        
+        # TODO : 
+        # crop bbox 
+        person_sample = image_array[x:x2+1, y:y2+1]
+        # resize bbox 
+        person_sample = cv2.resize(person_sample, (self.image_width, self.image_height))
+
+        print("person sample size : ", person_sample.shape)
+
+        if image_array is None: 
+            raise ValueError(f"Image path : {image_path} returns None array")
+
+        # rescale keypoints to heatmap size
+        rescaled_keypoints = keypoints.copy()   
+        rescaled_keypoints[:, 0] = keypoints[:, 0] / self.image_width * self.heatmap_width
+        rescaled_keypoints[:, 1] = keypoints[:, 1] / self.image_height * self.heatmap_height
+        keypoints_heatmap = self._generate_heatmaps(rescaled_keypoints)
+        return image_array, keypoints_heatmap
+
+
+    def _load_coco_keypoints(self): 
+        """
+            Load all keypoint annotations
+        """
         keypoints = []
         for idx in self.image_ids: 
             # multiple poses per person in a single image
@@ -94,12 +170,15 @@ class COCODataset(Dataset):
 
 
     def _get_img_ids(self): 
+        """
+            Return the list of image ids based on data_set
+        """
         return self.coco.getImgIds()
 
 
     def _get_annotation_file(self):
         """
-            Return the annotation file path
+            Return the annotation file path based on data_set
         """
         # load from train annotation
         if self.is_train:
@@ -113,6 +192,12 @@ class COCODataset(Dataset):
     def _get_box_cs(self, box): 
         """
             Return the center and the scale of a bounding box of size (4,)
+            
+            Args: 
+                box : (x,y,w,h)
+            
+            Output: 
+                center, scale
         """
 
         x, y, w, h = box
@@ -136,6 +221,12 @@ class COCODataset(Dataset):
     def _load_single_annotation(self, index): 
         """
             Load annotations for a single image index
+
+            Args: 
+                index : item's index
+            
+            Ouput: 
+                annotation_gt : a list of dict{"image_path", "scale", "joints_2d", "joints_2d_visibility", "bbox"}
         """
 
         image_obj = self.coco.loadImgs(index)[0]
@@ -149,8 +240,6 @@ class COCODataset(Dataset):
         objs = []   
         
         annot_gt = []
-
-        # print(f"Identified {len(annot_obj)} objects")
         
         for obj in annot_obj:
             x, y, w, h = obj['bbox']

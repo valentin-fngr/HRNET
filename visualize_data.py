@@ -24,6 +24,7 @@ def visualize_train_coco(nb_images=5):
     for idx, annot in enumerate(coco.db[:nb_images]): 
         image_path = annot["image_path"]
         image_array = cv2.imread(image_path, cv2.IMREAD_COLOR)
+        print("image size : ", image_array.shape)
         image_array = image_array[...,::-1]
         if image_array is None: 
             print("Could not load image ...")
