@@ -92,7 +92,7 @@ class COCODataset(Dataset):
 
 
 
-    def _generate_heatmaps(self, keypoints): 
+    def _generate_heatmaps(self, keypoints, keypoints_visibility): 
         """
             Generate #keypoints target heatmap using 2d gaussian filtering 
 
@@ -104,7 +104,9 @@ class COCODataset(Dataset):
 
         kpts = keypoints.copy()
         heatmaps = np.zeros((self.num_joints, int(self.heatmap_height), int(self.heatmap_width)))
-      
+
+        keypoints_weight = keypoints_visibility[:, 0]
+
         heatmap_stride_h = self.image_height / self.heatmap_height 
         heatmap_stride_w = self.image_width / self.heatmap_width
 
@@ -114,7 +116,10 @@ class COCODataset(Dataset):
 
         # for each keypoint : 
         for i in range(self.num_joints): 
-            # rescale keypoints to heatmap size 
+            # if the point is not visible, leave the heatmap empty
+            if keypoints_weight[i] == 0: 
+                continue
+
             x0 = y0 = size // 2
             # load gaussian kernel (+1 to unsure odd size kernel)
             g = np.exp(-((x - x0)**2 + (y - y0)**2)) / (2*self.sigma**2)
@@ -166,7 +171,7 @@ class COCODataset(Dataset):
             raise ValueError(f"Image path : {image_path} returns None array")
 
         # rescale keypoints to heatmap size
-        keypoints_heatmap = self._generate_heatmaps(keypoints)
+        keypoints_heatmap = self._generate_heatmaps(keypoints, keypoints_visibility)
         return image_array, keypoints_heatmap
 
 

@@ -22,7 +22,6 @@ def visualize_train_coco(nb_images=5):
     for idx, annot in enumerate(coco.db[:nb_images]): 
         image_path = annot["image_path"]
         image_array = cv2.imread(image_path, cv2.IMREAD_COLOR)
-        print("image size : ", image_array.shape)
         image_array = image_array[...,::-1]
         if image_array is None: 
             print("Could not load image ...")
@@ -31,7 +30,6 @@ def visualize_train_coco(nb_images=5):
         x,y,w,h = annot["bbox"]
         keypoints = annot["joints_2d"]
         keypoints_visibility = annot["joints_2d_visibility"]
-        print(keypoints_visibility)
 
         fig, ax = plt.subplots()
         rect = patches.Rectangle((x,y), w, h, linewidth=1, edgecolor='r', facecolor='none')
@@ -45,17 +43,6 @@ def visualize_train_coco(nb_images=5):
         plt.savefig(os.path.join(os.getcwd(), "assets" ,str(idx) + image_path.split("/")[-1]))
         plt.show()
         
-
-
-
-
-        
-
-
-
-
-
-
 
 
 
