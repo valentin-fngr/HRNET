@@ -10,8 +10,6 @@ logger = logging.getLogger(__name__)
 
 
 
-
-
 def visualize_train_coco(nb_images=5): 
     """
         A function that visualize the bounding boxes and keypoints  
@@ -33,12 +31,14 @@ def visualize_train_coco(nb_images=5):
         x,y,w,h = annot["bbox"]
         keypoints = annot["joints_2d"]
         keypoints_visibility = annot["joints_2d_visibility"]
+        print(keypoints_visibility)
 
         fig, ax = plt.subplots()
         rect = patches.Rectangle((x,y), w, h, linewidth=1, edgecolor='r', facecolor='none')
         # plot bbox
         ax.add_patch(rect)
         # plot keypoints
+        keypoints = keypoints[keypoints_visibility > 0].reshape(-1, 2)
         plt.scatter(x=keypoints[:, 0], y=keypoints[:, 1], c="red")
         # save plot 
         plt.imshow(image_array)

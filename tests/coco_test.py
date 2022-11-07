@@ -29,16 +29,13 @@ class TestCOCODataset(unittest.TestCase):
             
             if i >= 2: 
                 break
-            img = img.detach().numpy()[...,::-1]
-            h,w = img.shape[1:3]
-            
+            img = img.detach().numpy()[...,::-1]      
+            h, w = img.shape[1:3]      
 
             for j in range(self.coco.num_joints): 
                 hmap = heatmap[0, j] 
-                print("hmap size : ", hmap.shape)
-                print("image size : ", img.shape)
                 plt.imshow(hmap.numpy())
-                plt.imshow(img[0], alpha=0.25)
+                plt.imshow(cv2.resize(img[0], (int(w/4), int(h/4))), alpha=0.25)
                 plt.savefig(os.path.join(os.getcwd(), "assets" ,str(i) + "_" + "heatmap_" + str(j) + ".png"))
                 plt.show()
 

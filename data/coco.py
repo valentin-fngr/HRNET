@@ -30,11 +30,11 @@ class COCODataset(Dataset):
         self.image_height = 480
         self.aspect_ratio = self.image_width * 1.0 / self.image_height
 
-        self.heatmap_width = 64 
-        self.heatmap_height = 64 
+        self.heatmap_width = self.image_width / 4 
+        self.heatmap_height = self.image_height / 4 
 
         # used for gaussian filtering 
-        self.sigma = 2
+        self.sigma = 3
 
         # no idea what it does
         self.pixel_std = 200
@@ -102,15 +102,44 @@ class COCODataset(Dataset):
                 heatmaps : nd array of size (#keypoints, heatmap_width, heatmap_height)
         """
 
-        heatmaps = np.zeros((self.num_joints, self.image_height, self.image_width))
+        kpts = keypoints.copy()
+        heatmaps = np.zeros((self.num_joints, int(self.heatmap_height), int(self.heatmap_width)))
+      
+        heatmap_stride_h = self.image_height / self.heatmap_height 
+        heatmap_stride_w = self.image_width / self.heatmap_width
 
+        size = self.sigma * 2 + 1  # 5
+        x = np.arange(0, size, 1, dtype=np.float32)
+        y = np.arange(0, size, 1, dtype=np.float32)[:, None] 
+
+        # for each keypoint : 
         for i in range(self.num_joints): 
-            # generate heatmap for each keypoint 
-            mu_x, mu_y = keypoints[i]
-            tx = np.arange(0, self.image_width, 1, dtype=np.float32)
-            ty = np.arange(0, self.image_height, 1, dtype=np.float32)[:, None]
-            heatmaps[i] = np.exp(- ((tx - mu_x) ** 2 + (ty - mu_y) ** 2) / (2 * self.sigma ** 2))
-    
+            # rescale keypoints to heatmap size 
+            x0 = y0 = size // 2
+            # load gaussian kernel (+1 to unsure odd size kernel)
+            g = np.exp(-((x - x0)**2 + (y - y0)**2)) / (2*self.sigma**2)
+
+            # pixel coordinate where we will center our 2D gaussian kernel 
+            mu_x = kpts[i][1] / heatmap_stride_w
+            mu_y = kpts[i][0] / heatmap_stride_h
+
+            print("old : ", kpts[i])
+            print("new : ", mu_x, mu_y)
+
+            # get upper left and bottom right (x,y) coordinates for the 2D gaussian filtering
+            ul = (mu_x - self.sigma, mu_y - self.sigma)
+            br = (mu_x + self.sigma + 1, mu_y + self.sigma + 1)
+            # get part of the kernel that we will use for computing the heatmap
+            g_x = int(max(0, -ul[0])), int(min(br[0], self.heatmap_width) - ul[0])
+            g_y = int(max(0, -ul[1])), int(min(br[1], self.heatmap_height) - ul[1])
+            # get upper left and bottom right pixel to modify in the heatmap 
+            hmap_x = int(max(0, ul[0])), int(min(br[0], self.heatmap_width))
+            hmap_y = int(max(0, ul[1])), int(min(br[1], self.heatmap_height))
+
+
+            # modify heatmap 
+            heatmaps[i, hmap_x[0]:hmap_x[1], hmap_y[0]: hmap_y[1]] = g[g_x[0]:g_x[1], g_y[0]: g_y[1]]
+
         return heatmaps
 
 
@@ -130,36 +159,20 @@ class COCODataset(Dataset):
         image_path = item["image_path"]
         keypoints = item["joints_2d"]
         keypoints_visibility = item["joints_2d_visibility"]
-        x, y, w, h = item["bbox"]
 
-        x2 = x + w 
-        y2 = y + h
-        
-        # load image 
         image_array = cv2.imread(image_path, cv2.IMREAD_COLOR)
-        
-        # TODO : 
-        # crop bbox 
-        person_sample = image_array[x:x2+1, y:y2+1]
-        # resize bbox 
-        person_sample = cv2.resize(person_sample, (self.image_width, self.image_height))
-
-        print("person sample size : ", person_sample.shape)
 
         if image_array is None: 
             raise ValueError(f"Image path : {image_path} returns None array")
 
         # rescale keypoints to heatmap size
-        rescaled_keypoints = keypoints.copy()   
-        rescaled_keypoints[:, 0] = keypoints[:, 0] / self.image_width * self.heatmap_width
-        rescaled_keypoints[:, 1] = keypoints[:, 1] / self.image_height * self.heatmap_height
-        keypoints_heatmap = self._generate_heatmaps(rescaled_keypoints)
+        keypoints_heatmap = self._generate_heatmaps(keypoints)
         return image_array, keypoints_heatmap
 
 
     def _load_coco_keypoints(self): 
         """
-            Load all keypoint annotations
+            Load all keyppoints
         """
         keypoints = []
         for idx in self.image_ids: 
@@ -269,15 +282,14 @@ class COCODataset(Dataset):
             for joint_idx in range(self.num_joints): 
                 joints_2d[joint_idx, 0] = obj["keypoints"][joint_idx * 3 + 0]
                 joints_2d[joint_idx, 1] = obj["keypoints"][joint_idx * 3 + 1]
-
                 is_visible = obj["keypoints"][joint_idx * 3 + 2]
 
                 # if occulted or visible, set it to visible anyways
                 if is_visible >= 1: 
                     is_visible = 1 
 
-                joints_2d_visibility[joint_idx, 0] = 1 
-                joints_2d_visibility[joint_idx, 1] = 1 
+                joints_2d_visibility[joint_idx, 0] = is_visible
+                joints_2d_visibility[joint_idx, 1] = is_visible
                 
             center, scale = self._get_box_cs(obj['clean_bbox'])
             annot_gt.append({
