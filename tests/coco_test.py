@@ -12,7 +12,6 @@ import torchvision.transforms as transforms
 
 class TestCOCODataset(unittest.TestCase):
 
-
     def __init__(self, *args, **kwargs): 
         super().__init__(*args, **kwargs)
         coco = COCODataset()
@@ -24,9 +23,9 @@ class TestCOCODataset(unittest.TestCase):
 
         # iterate trough the a few images and save the heatmaps 
 
-        for i, (img, heatmap) in enumerate(self.loader): 
-            assert heatmap.shape[1] == self.coco.num_joints
-            
+        for i, (img, heatmap, kpt_weight) in enumerate(self.loader): 
+
+            assert heatmap.shape[1] == self.coco.num_joints 
             if i >= 2: 
                 break
             img = img.detach().numpy()[...,::-1]      
@@ -34,6 +33,9 @@ class TestCOCODataset(unittest.TestCase):
 
             for j in range(self.coco.num_joints): 
                 hmap = heatmap[0, j] 
+                if kpt_weight[0, j].item() == 0: 
+                    assert np.count_nonzero(hmap) == 0
+                    continue
                 plt.imshow(hmap.numpy())
                 plt.imshow(cv2.resize(img[0], (int(w/4), int(h/4))), alpha=0.25)
                 plt.savefig(os.path.join(os.getcwd(), "assets" ,str(i) + "_" + "heatmap_" + str(j) + ".png"))
