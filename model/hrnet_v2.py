@@ -1,7 +1,8 @@
 import torch.nn as nn 
-import torchvision 
+import torch 
 import numpy as np 
 from collections import OrderedDict
+
 
 
 
@@ -145,8 +146,6 @@ class FusionModule(nn.Module):
                 else: 
                     # 1 x 1 bilinear > 1x1 convolution to match nb channels | be careful : use different scale_factor !!!!
                     scale_factor = 2**(i - j)
-                    # print(f"Building upsampling from : {(i, j)} | expecting {2**i * nb_channels} to {2**j * nb_channels}")
-                    print("from to : ", c_in, nb_channels * (j+1))
                     trunc = [
                         nn.Upsample(scale_factor=scale_factor, mode='bilinear'), 
                         nn.Conv2d(c_in, nb_channels * (j+1), 1, 1, 0)
@@ -180,27 +179,68 @@ class FusionModule(nn.Module):
             c_in = self.nb_channels * (1+i)
             for j in range(self.nb_output): 
                 if i == j: 
-                    # print("ff : ", j+1, i+1)
                     c_in = c_out = self.nb_channels * (i+1)
                     out_j = self._modules[f"keep_stage_{i+1}_to_stage_{j+1}"](list(*args)[i])
             
                 elif i < j: 
-                    # print("downsample from : ", i+1, j+1)
                     c_in = self.nb_channels * (i+1)
                     out_j = self._modules[f"downsample_from_stage_{i+1}_to_stage_{j+1}"](list(*args)[i])
                 else: 
                     # 1 x 1 bilinear > 1x1 convolution to match nb channels | be careful : use different scale_factor !!!!
-                    scale_factor = (i - j) * 2 
-                    # print("upsample from : ", i+1, j+1, scale_factor)
-                    # print("upsample input : ", list(*args)[i].shape)
-                    # print("layer : ", self.layers[f"upsample_{i+1}_{j+1}"])
-                    print("From to : ", i+1, j+1, scale_factor)
-                    print("c_in ", c_in)
                     out_j = self._modules[f"upsample_frmo_stage_{i+1}_to_stage_{j+1}"](list(*args)[i])
 
 
                 output[j] = out_j if output[j] is None else (output[j] + out_j)
         
+        return output
+
+
+
+class Hrnet_v2_head(nn.Module): 
+
+    def __init__(self, nb_stages, nb_channels, c_out): 
+        super().__init__()
+        self.nb_stages = nb_stages 
+        self.nb_channels = nb_channels
+        self.c_out = c_out
+
+        for i in range(nb_stages): 
+            if i == 0: 
+                self.add_module("feed_forward", nn.Conv2d(nb_channels, nb_channels, 3, 1, 1))
+            else: 
+                scale_factor = 2**i
+                c_in = nb_channels * (i+1)
+                self.add_module(
+                    f"upsampling_from_{i+1}_to_1", 
+                    nn.Sequential(
+                        nn.Upsample(scale_factor=scale_factor, mode='bilinear'), 
+                        # we do not change the number of channels
+                        nn.Conv2d(c_in, c_in, 1, 1, 0)
+                    )
+                )
+
+
+        self.merge_conv = nn.Conv2d(
+            sum([(k+1)*nb_channels for k in range(self.nb_stages)]), 
+            self.c_out, 
+            1, 
+            1, 
+            0
+        )
+            
+        
+    def forward(self, *args): 
+        
+        x1 = self._modules["feed_forward"](list(*args)[0])
+        output = [x1]
+
+        for i in range(1, self.nb_stages): 
+            output.append(
+                self._modules[f"upsampling_from_{i+1}_to_1"](list(*args)[i])
+            )
+        output = torch.concat(output, 1)
+        print(output.shape)
+        output = self.merge_conv(output)
         return output
 
 
@@ -219,15 +259,19 @@ class HRNETV2(nn.Module):
         The number of channels to keep for the high resolution path (named C in the official paper)
     bottle_neck_channels : int
         Number of channels to use in the bottleneck convolution layer inside the stage 1 
-
+    c_out : int 
+        Number of channels for the output tensor, should be equal to the number of keypoints
+    head : nn.Module 
+        Head module to compute the final output tensor
     """
-    def __init__(self, nb_stages, nb_blocks, nb_channels, bottle_neck_channels=64): 
+    def __init__(self, nb_stages, nb_blocks, nb_channels, bottle_neck_channels=64, c_out=17, head=Hrnet_v2_head): 
 
         super().__init__()
         self.nb_stages = nb_stages 
         self.nb_blocks = nb_blocks 
         self.nb_channels = nb_channels
         self.bottle_neck_channels = bottle_neck_channels
+        self.c_out = c_out
 
         self.downsample_1 = nn.Conv2d(3, nb_channels, 3, 2, 1)
         self.downsample_2 = nn.Conv2d(nb_channels, nb_channels, 3, 2, 1)
@@ -250,6 +294,9 @@ class HRNETV2(nn.Module):
 
         self.stage_4_1 = BasicNetwork(nb_blocks, 4*nb_channels)
         self.fusion_stage_4 = FusionModule(4,nb_channels, add_branch=False)
+
+        self.head = head(nb_stages, nb_channels, c_out)
+        
 
 
     def forward(self, x): 
@@ -280,6 +327,10 @@ class HRNETV2(nn.Module):
         x4 = self.stage_4_1(x4)
 
         x1, x2, x3, x4 = self.fusion_stage_4([x1, x2, x3, x4])
+
+        # hrnet v2 head 
+        x = self.head([x1, x2, x3, x4])
+        print(x.shape)
         return x 
 
 
