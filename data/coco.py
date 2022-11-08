@@ -13,8 +13,6 @@ import torch
 
 class COCODataset(Dataset): 
 
-
-
     def __init__(self, transform=None): 
         super().__init__()
 
@@ -77,7 +75,6 @@ class COCODataset(Dataset):
         self.db = self._get_db()
 
 
-
     def __len__(self):
         return len(self.db)
 
@@ -89,7 +86,6 @@ class COCODataset(Dataset):
             db = self._load_coco_keypoints()
 
         return db
-
 
 
     def _generate_heatmaps(self, keypoints, keypoints_visibility): 
@@ -201,7 +197,6 @@ class COCODataset(Dataset):
             folder_path = os.path.join(self.root, "annotations", "train")
             annotation_path = os.path.join(folder_path, "person_keypoints_" + self.data_set +".json")
     
-
         return annotation_path
 
 
