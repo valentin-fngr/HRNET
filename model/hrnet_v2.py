@@ -334,3 +334,32 @@ class HRNETV2(nn.Module):
         return x 
 
 
+
+class HeatMapRegressionLoss(nn.Module): 
+
+
+    def __init__(self): 
+        super().__init__()
+        self.l2_loss = nn.MSELoss(reduction="mean")
+
+    def forward(self, y_pred, y_true):
+        """
+        heatmap regression computation
+        """
+        batch_size, nb_joints = y_true.shape[0], y_true.shape[1]
+        assert y_true.shape[1] == y_pred.shape[1]
+        # tuple of size (bs, 1, c_out) # nb_joints 
+        heatmap_true = torch.split(y_true.reshape((batch_size, nb_joints, -1)), 1, dim=1)
+        heatmap_pred = torch.split(y_pred.reshape((batch_size, nb_joints, -1)), 1, dim=1)
+
+        loss = 0.0
+
+        for joint_id in range(nb_joints): 
+            gt = heatmap_true[joint_id].squeeze() # size : (bs, c_out,)
+            pred = heatmap_pred[joint_id].squeeze() # size : (bs, c_out)
+            loss += self.l2_loss(pred, gt) # reduction on dim = 0
+
+        # mean over the number of joints
+        return loss / nb_joints
+
+
