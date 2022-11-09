@@ -1,9 +1,6 @@
 import torch.nn as nn 
 import torch 
 import numpy as np 
-from collections import OrderedDict
-
-
 
 
 class ConvBnRelu(nn.Module): 
@@ -334,9 +331,10 @@ class HRNETV2(nn.Module):
         return x 
 
 
-
 class HeatMapRegressionLoss(nn.Module): 
-
+    """
+    Heatmap regression class to compute the loss of hrnet_v2
+    """
 
     def __init__(self): 
         super().__init__()
@@ -345,6 +343,25 @@ class HeatMapRegressionLoss(nn.Module):
     def forward(self, y_pred, y_true):
         """
         heatmap regression computation
+
+        Parameters 
+        ----------
+
+        y_pred : tensor (batch_size, nb_joints, h, w, c_out)
+            predicted heatmap 
+
+        y_true : tensor (batch_size, nb_joints, h, w, c_out)
+            ground truth heatmap
+
+        Notes 
+        -------
+        
+        We reshape both heatmaps to (batch_size, nb_joints, -1)
+        we split both heatmaps into a tuple of arrays ([batch_size, 1, -1]) #nb_joints
+        We squeeze to ([batch_size, -1])
+        We compute the loss for each keypoints at the time with reduction=mean over dim = 0 
+        
+        Finally, we compute the final loss mean over all keypoints
         """
         batch_size, nb_joints = y_true.shape[0], y_true.shape[1]
         assert y_true.shape[1] == y_pred.shape[1]

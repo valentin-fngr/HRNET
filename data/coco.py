@@ -6,14 +6,12 @@ from pycocotools.coco import COCO
 import os 
 import numpy as np 
 import cv2
-import torch 
-
-
+import matplotlib.pyplot as plt
 
 
 class COCODataset(Dataset): 
 
-    def __init__(self, transform=None): 
+    def __init__(self, data_set="val2017", transform=None): 
         super().__init__()
 
         # TODO : 
@@ -22,10 +20,10 @@ class COCODataset(Dataset):
         # COCO dataset root : 
         self.root = "/home/fontanger/research/dataset/COCO/"
         # either train2017 or val2017
-        self.data_set = "val2017"
+        self.data_set = data_set
         # image width and height
-        self.image_width = 640
-        self.image_height = 480
+        self.image_width = 256
+        self.image_height = 192
         self.aspect_ratio = self.image_width * 1.0 / self.image_height
 
         self.heatmap_width = self.image_width / 4 
@@ -105,7 +103,7 @@ class COCODataset(Dataset):
 
         heatmap_stride_h = self.image_height / self.heatmap_height 
         heatmap_stride_w = self.image_width / self.heatmap_width
-
+        
         size = self.sigma * 2 + 1  # 5
         x = np.arange(0, size, 1, dtype=np.float32)
         y = np.arange(0, size, 1, dtype=np.float32)[:, None] 
@@ -121,22 +119,22 @@ class COCODataset(Dataset):
             g = np.exp(-((x - x0)**2 + (y - y0)**2)) / (2*self.sigma**2)
 
             # pixel coordinate where we will center our 2D gaussian kernel 
-            mu_x = kpts[i][1] / heatmap_stride_w
-            mu_y = kpts[i][0] / heatmap_stride_h
-
+            mu_x = int(kpts[i][0] / heatmap_stride_w)
+            mu_y = int(kpts[i][1] / heatmap_stride_h)            
+            
             # get upper left and bottom right (x,y) coordinates for the 2D gaussian filtering
-            ul = (mu_x - self.sigma, mu_y - self.sigma)
-            br = (mu_x + self.sigma + 1, mu_y + self.sigma + 1)
+            ul = int(mu_x - self.sigma), int(mu_y - self.sigma)
+            br = int(mu_x + self.sigma + 1), int(mu_y + self.sigma + 1)
+
             # get part of the kernel that we will use for computing the heatmap
             g_x = int(max(0, -ul[0])), int(min(br[0], self.heatmap_width) - ul[0])
             g_y = int(max(0, -ul[1])), int(min(br[1], self.heatmap_height) - ul[1])
             # get upper left and bottom right pixel to modify in the heatmap 
             hmap_x = int(max(0, ul[0])), int(min(br[0], self.heatmap_width))
-            hmap_y = int(max(0, ul[1])), int(min(br[1], self.heatmap_height))
-
+            hmap_y = int(max(0, ul[1])), int(min(br[1], self.heatmap_height))            
 
             # modify heatmap 
-            heatmaps[i, hmap_x[0]:hmap_x[1], hmap_y[0]: hmap_y[1]] = g[g_x[0]:g_x[1], g_y[0]: g_y[1]]
+            heatmaps[i, hmap_y[0]:hmap_y[1], hmap_x[0]: hmap_x[1]] = g[g_x[0]:g_x[1], g_y[0]: g_y[1]]
 
         return heatmaps, keypoints_weight
 
@@ -157,16 +155,31 @@ class COCODataset(Dataset):
         image_path = item["image_path"]
         keypoints = item["joints_2d"]
         keypoints_visibility = item["joints_2d_visibility"]
+        x,y,w,h = item["bbox"]
+        x = int(x) 
+        y = int(y)
+        w = int(w)
+        h = int(h)
+
+        # TODO : 
+        # crop bbox and resize it 
+        # deal with keypoints ! 
 
         image_array = cv2.imread(image_path, cv2.IMREAD_COLOR)
+        cropped_bbox = image_array[y:y+h, x:w+x, :]
+        keypoints[: ,0] = keypoints[:, 0] - x 
+        keypoints[:, 1] = keypoints[:, 1] - y
+        keypoints[:, 0] = keypoints[:, 0] * (self.image_width / cropped_bbox.shape[1]) 
+        keypoints[:, 1] = keypoints[:, 1] * (self.image_height / cropped_bbox.shape[0])
+        cropped_bbox = cv2.resize(cropped_bbox, (self.image_width, self.image_height))
 
         if image_array is None: 
             raise ValueError(f"Image path : {image_path} returns None array")
 
-        # rescale keypoints to heatmap size
+
+        # rescaling keypoints to bbox 
         keypoints_heatmap, keypoints_weight = self._generate_heatmaps(keypoints, keypoints_visibility)
-        
-        return image_array, keypoints_heatmap, keypoints_weight
+        return cropped_bbox, keypoints_heatmap, keypoints_weight
 
 
     def _load_coco_keypoints(self): 
