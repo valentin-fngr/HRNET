@@ -236,7 +236,6 @@ class Hrnet_v2_head(nn.Module):
                 self._modules[f"upsampling_from_{i+1}_to_1"](list(*args)[i])
             )
         output = torch.concat(output, 1)
-        print(output.shape)
         output = self.merge_conv(output)
         return output
 
@@ -327,7 +326,6 @@ class HRNETV2(nn.Module):
 
         # hrnet v2 head 
         x = self.head([x1, x2, x3, x4])
-        print(x.shape)
         return x 
 
 
