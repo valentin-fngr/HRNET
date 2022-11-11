@@ -1,5 +1,11 @@
 
 
+experiment_name = "are_things_working"
+
+# paths 
+
+summary_path = "./runs/"
+
 
 INPUT_IMAGE = (480, 640)
 INPUT_BBOX_SIZE = (256, 192)
@@ -7,7 +13,7 @@ HEATMAP_SIZE = (64, 48)
 
 
 
-
+epochs = 250
 batch_size = 32
 device = "cuda"
 nb_stages = 4 
