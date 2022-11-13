@@ -14,7 +14,7 @@ HEATMAP_SIZE = (64, 48)
 
 
 epochs = 250
-batch_size = 32
+batch_size = 16
 device = "cuda"
 nb_stages = 4 
 nb_blocks = 4 

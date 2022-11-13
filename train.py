@@ -115,7 +115,7 @@ def train(train_loader, model, criterion, optimizer, scheduler, writer, epoch):
         current_loss = criterion(preds, keypoints_heatmap)
         loss += current_loss.item()
         
-        if idx % 20 == 0: 
+        if idx % 60 == 0: 
             # monitor metric 
             writer.add_scalar("Train/Loss", loss/20.0, epoch*len(train_loader) + idx + 1)
             print(f"Epoch={epoch} - Batch size={batch_size} | Training loss = {loss / 20.0}")
@@ -178,8 +178,6 @@ def visualize_preds(data_loader, model, writer, epoch, is_train=True):
             if i > 2: 
                 break 
 
-
-    
             
 def main(): 
     """
