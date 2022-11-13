@@ -1,0 +1,14 @@
+? ''
+: ? ''
+  : config:
+      dataset:
+        dataset:
+          image:
+            width: 256
+            height: 192
+            nb_joints: 17
+          heatmap:
+            width: 64
+            height: 48
+      optimizer:
+        lr: 0.001

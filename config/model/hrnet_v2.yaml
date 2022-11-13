@@ -1,0 +1,5 @@
+nb_stages: 4 
+nb_blocks: 4 
+nb_channels: 256 
+bottle_neck_channels: 64 
+    

@@ -5,20 +5,23 @@ from data.coco import COCODataset
 from torch.utils.data import DataLoader 
 import torchvision.transforms as transforms
 import config
+import hydra
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 import datetime
+from omegaconf import OmegaConf
 
-def get_criterion(): 
+
+def get_criterion(cfg): 
     """
     Return the heatmap regression criterion
     """
     criterion = HeatMapRegressionLoss()
-    criterion.to(config.device)
+    criterion.to(cfg.config.training.device)
     return criterion 
 
 
-def get_train_val_loaders(): 
+def get_train_val_loaders(cfg): 
     """
     Return the training and validation loaders
     """
@@ -29,17 +32,16 @@ def get_train_val_loaders():
 
     train_dataset = COCODataset(data_set="train2017", transform=transform)
     val_dataset = COCODataset(data_set="val2017", transform=transform)
-
     train_loader = DataLoader(
         train_dataset,
-        batch_size=config.batch_size, 
+        batch_size=cfg.config.training.batch_size, 
         shuffle=True, 
         num_workers=3
     )
 
     val_loader = DataLoader(
         val_dataset, 
-        batch_size=config.batch_size, 
+        batch_size=cfg.config.training.batch_size, 
         shuffle=True, 
         num_workers=3
     )
@@ -47,22 +49,22 @@ def get_train_val_loaders():
     return train_loader, val_loader
 
 
-def get_model(): 
+def get_model(cfg): 
     """
     Initialize the model
     """
-    model = HRNETV2(config.nb_stages, config.nb_blocks, config.nb_channels, config.bottle_neck_channels, config.nb_joints)
-    model.to(config.device)
+    model = HRNETV2(cfg.config.model.nb_stages, cfg.config.model.nb_blocks, cfg.config.model.nb_channels, cfg.config.model.bottle_neck_channels, cfg.config.dataset.nb_joints)
+    model.to(cfg.config.training.device)
     return model 
 
 
 
-def get_optimizer(model): 
+def get_optimizer(model,cfg): 
     """
     Initialize the optimizer and the scheduler
     """
     # TODO : add scheduling
-    optimizer = torch.optim.Adam(model.parameters(), lr=config.lr)  
+    optimizer = torch.optim.Adam(model.parameters(), lr=cfg.config.training.learning_rate)  
     def lambda_lr(lr): 
         if lr == 170: 
             return 1e-4
@@ -75,7 +77,7 @@ def get_optimizer(model):
 
 
 
-def train(train_loader, model, criterion, optimizer, scheduler, writer, epoch): 
+def train(train_loader, model, criterion, optimizer, scheduler, writer, epoch, cfg): 
     """
     Train the model 
     
@@ -107,8 +109,8 @@ def train(train_loader, model, criterion, optimizer, scheduler, writer, epoch):
         image_array, keypoints_heatmap, _ = batch
         batch_size = image_array.shape[0]
         # move to device 
-        image_array = image_array.to(config.device)
-        keypoints_heatmap = keypoints_heatmap.to(config.device)        
+        image_array = image_array.to(cfg.config.training.device)
+        keypoints_heatmap = keypoints_heatmap.to(cfg.config.training.device)        
         preds = model(image_array)
         # compute loss 
         
@@ -178,25 +180,29 @@ def visualize_preds(data_loader, model, writer, epoch, is_train=True):
             if i > 2: 
                 break 
 
-            
-def main(): 
+
+@hydra.main(config_name='config/config.yaml')
+def main(cfg): 
     """
     Main function
     """
+    print("--- Loading configuration ---")
+    print(OmegaConf.to_yaml(cfg))
+    print("--- loading configuration : DONE ---", "\n")
 
     print("--- Loading training data ---")
-    train_loader, val_loader = get_train_val_loaders()
+    train_loader, val_loader = get_train_val_loaders(cfg)
     print(" Loading training data : DONE ---", "\n")
 
     print("--- Loading criterion ---")
-    criterion = get_criterion()
+    criterion = get_criterion(cfg)
     print("--- Loading criterion : DONE ---", "\n")
 
     print("--- loading model ---")
-    model = get_model()
+    model = get_model(cfg)
     print("--- loading model : DONE ---", "\n")
     print("--- Loading optimizer and scheduler ---")
-    optimizer, scheduler = get_optimizer(model)
+    optimizer, scheduler = get_optimizer(model, cfg)
     print("--- Loading optimizer and scheduler ---")
     current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     writer = SummaryWriter(config.summary_path + "are_things_working_", current_time)
@@ -207,7 +213,7 @@ def main():
     for epoch in range(config.epochs): 
         
         # train 
-        train(train_loader, model, criterion, optimizer, scheduler, writer, epoch)
+        train(train_loader, model, criterion, optimizer, scheduler, writer, epoch, cfg)
         # validation
          
 

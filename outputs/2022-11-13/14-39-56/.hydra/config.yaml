@@ -1,0 +1,25 @@
+? ''
+: ? ''
+  : config:
+      dataset:
+        image:
+          width: 256
+          height: 192
+          nb_joints: 17
+        heatmap:
+          width: 64
+          height: 48
+      optimizer:
+        lr: 0.001
+      model:
+        nb_stages: 4
+        nb_blocks: 4
+        nb_channels: 256
+        bottle_neck_channels: 64
+      training:
+        epochs: 250
+        batch_size: 16
+        device: cuda:0
+        learning_rate: 0.001
+      tracking:
+        summary_path: ./runs

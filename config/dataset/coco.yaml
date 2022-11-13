@@ -1,0 +1,10 @@
+nb_joints: 17
+image: 
+  width: 256 
+  height: 192
+
+heatmap: 
+  width: 64 
+  height: 48 
+  
+      

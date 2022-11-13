@@ -1,0 +1,13 @@
+defaults: 
+  - dataset: coco 
+  - optimizer: adam
+  - model: hrnet_v2
+
+training: 
+  epochs: 250 
+  batch_size: 16 
+  device: "cuda:0"
+  learning_rate: 0.001
+
+tracking: 
+  summary_path: "./runs"
